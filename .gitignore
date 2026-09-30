@@ -1,0 +1,15 @@
+# virtualenv
+.venv/
+
+# python
+__pycache__/
+*.py[cod]
+
+# your own tasks, blocklists and settings - personal, not part of the app
+data/
+
+# windows / editors
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
