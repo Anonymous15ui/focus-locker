@@ -3,6 +3,18 @@
 A Windows to-do app that locks the apps and websites you pick while you work, and
 unlocks them for a break when you finish a task.
 
+## Setup
+
+Needs Windows and Python 3.9+. From the project folder, once:
+
+```
+py -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+That creates the `.venv` folder the launchers expect. It isn't in the repo, so
+this step is required after cloning.
+
 ## Run it
 
 ```
@@ -10,7 +22,7 @@ run.bat                 # apps are locked, websites are not
 run_as_admin.bat        # apps AND websites are locked (hosts file needs admin)
 ```
 
-Or manually: `.venv\Scripts\python.exe main.py`
+Or manually, from the project folder: `.venv\Scripts\python.exe main.py`
 
 ## How it works
 
