@@ -40,7 +40,14 @@ Or manually, from the project folder: `.venv\Scripts\python.exe main.py`
   a 30-second warning in the Activity log before that happens.
 - **Finish the whole list** → the longer end-of-list break starts (15 min default),
   and after that nothing re-locks, because there is nothing left to do.
+- **Undo done** on a finished task ends the break it earned and locks straight
+  back in — the break was for finishing something, so taking that back takes the
+  break back too. Outside a session it just un-ticks the task.
 - **Break now** starts an unscheduled break; **Stop / unlock** ends the session.
+
+The header shows where you stand at a glance: a ring that counts a break down in
+green and fills with tasks done in violet while you're locked in, the state in
+words, and a progress bar for the list. Ticking a task off gives the ring a pulse.
 
 ## Habits
 
