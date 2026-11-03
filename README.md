@@ -112,6 +112,7 @@ Habits don't lock or unlock anything; they're just tracked. They are saved in
 .venv\Scripts\python.exe tests\test_focus_flow.py
 .venv\Scripts\python.exe tests\test_task_links.py
 .venv\Scripts\python.exe tests\test_habits_and_language.py
+.venv\Scripts\python.exe tests\test_undo_ends_break.py
 ```
 
 Tests point `FOCUS_LOCKER_CONFIG` at a scratch file so they can never overwrite
