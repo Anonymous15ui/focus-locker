@@ -5,6 +5,7 @@ import webbrowser
 
 from . import config
 from .blocker import AppBlocker, SiteBlocker, close_processes, is_admin
+from .habits import toggle_day
 
 IDLE, FOCUS, BREAK = "idle", "focus", "break"
 
@@ -76,9 +77,19 @@ class Controller:
         return None
 
     def uncomplete_task(self, index):
-        if 0 <= index < len(self.tasks):
-            self.tasks[index]["done"] = False
-            self.save()
+        """Un-tick a task. If a break was running, it ends and the lock comes back.
+
+        A break is earned by finishing something. Taking that back means the work is
+        not done, so the break stops rather than running on.
+        """
+        if not (0 <= index < len(self.tasks)) or not self.tasks[index]["done"]:
+            return None
+        self.tasks[index]["done"] = False
+        self.save()
+        if self.state == BREAK:
+            self.log("task un-ticked - break over, back to focus")
+            return self.start_focus()
+        return None
 
     def open_task_link(self, index):
         """Open a task's link: a website, or a folder or file on this computer."""
@@ -113,6 +124,28 @@ class Controller:
             if blocked and (host == blocked or host.endswith("." + blocked)):
                 return True
         return False
+
+    # -- habit helpers ------------------------------------------------------
+    @property
+    def habits(self):
+        return self.cfg["habits"]
+
+    def add_habit(self, name):
+        name = name.strip()
+        if name and all(h["name"] != name for h in self.habits):
+            self.habits.append({"name": name, "done": []})
+            self.save()
+
+    def toggle_habit(self, index, day=None):
+        """Tick the habit off for today (or `day`), or untick it."""
+        if 0 <= index < len(self.habits):
+            toggle_day(self.habits[index], day)
+            self.save()
+
+    def remove_habit(self, index):
+        if 0 <= index < len(self.habits):
+            self.habits.pop(index)
+            self.save()
 
     # -- locking ------------------------------------------------------------
     def start_focus(self):

@@ -44,6 +44,11 @@ DEFAULTS = {
     # [{"text": str, "done": bool, "link": str}] - link is optional and may be a
     # URL, a folder or a file: wherever the task actually gets done.
     "tasks": [],
+    # --- habits ---
+    # [{"name": str, "done": ["YYYY-MM-DD", ...]}] - the days each habit was ticked
+    "habits": [],
+    # --- display ---
+    "language": "en",                 # a code from focus.i18n.LANGUAGES
 }
 
 _lock = threading.Lock()
@@ -64,6 +69,7 @@ def load():
         if not isinstance(cfg.get(key), type(default)):
             cfg[key] = default
     cfg["tasks"] = [_clean_task(t) for t in cfg["tasks"] if isinstance(t, dict) and t.get("text")]
+    cfg["habits"] = [_clean_habit(h) for h in cfg["habits"] if isinstance(h, dict) and h.get("name")]
     return cfg
 
 
@@ -73,6 +79,14 @@ def _clean_task(task):
         "text": str(task.get("text", "")),
         "done": bool(task.get("done", False)),
         "link": str(task.get("link", "")),
+    }
+
+
+def _clean_habit(habit):
+    done = habit.get("done")
+    return {
+        "name": str(habit.get("name", "")),
+        "done": sorted({d for d in done if isinstance(d, str)}) if isinstance(done, list) else [],
     }
 
 

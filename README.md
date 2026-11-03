@@ -42,10 +42,25 @@ Or manually, from the project folder: `.venv\Scripts\python.exe main.py`
   and after that nothing re-locks, because there is nothing left to do.
 - **Break now** starts an unscheduled break; **Stop / unlock** ends the session.
 
+## Habits
+
+The **Habits** tab is for things you want to do every day, separate from the
+to-do list. Add a habit, then select it and press "Done today / undo" (or
+double-click it) to tick today off. Each row shows:
+
+- `[x]` if it's done today,
+- seven dots for the last 7 days, oldest first (filled = done),
+- your streak: days in a row. A streak doesn't count as broken until a whole day
+  is missed, so it still shows yesterday's number before you've ticked today.
+
+Habits don't lock or unlock anything; they're just tracked. They are saved in
+`data/config.json` with everything else.
+
 ## Settings
 
 | Setting | Meaning |
 | --- | --- |
+| Language | English, العربية (Arabic), Français, Español. Switches straight away; Arabic also flips the layout right to left. To add a language, see the top of `focus/i18n.py` |
 | Break after each task | Off = only the end-of-list break |
 | Break after each task (minutes) | Default 5 |
 | Break after whole list (minutes) | Default 15 |
@@ -88,6 +103,8 @@ Or manually, from the project folder: `.venv\Scripts\python.exe main.py`
 
 ```
 .venv\Scripts\python.exe tests\test_focus_flow.py
+.venv\Scripts\python.exe tests\test_task_links.py
+.venv\Scripts\python.exe tests\test_habits_and_language.py
 ```
 
 Tests point `FOCUS_LOCKER_CONFIG` at a scratch file so they can never overwrite

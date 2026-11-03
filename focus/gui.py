@@ -2,94 +2,173 @@
 import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 
+from . import habits, i18n, theme
 from .controller import BREAK, FOCUS, IDLE, Controller
+from .i18n import t
 
 PAD = {"padx": 8, "pady": 6}
+MODES = ["suspend", "close"]
+# the controller's break reasons, as keys into i18n
+REASONS = {"task finished": "reason_task", "list finished": "reason_list",
+           "manual break": "reason_manual"}
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Focus Locker")
-        self.geometry("720x560")
-        self.minsize(620, 480)
+        self.geometry("860x620")
+        self.minsize(720, 560)
+        self._log_lines = []                  # kept so a language switch doesn't wipe the log
+        self._break_total = None              # full length of the running break, for the ring
         self.ctl = Controller(log=self.log)
+        i18n.set_language(self.ctl.cfg["language"])
+        self._habit_day = habits.today()
+        theme.apply(self)
 
-        self._build_header()
-        nb = ttk.Notebook(self)
-        nb.pack(fill="both", expand=True, **PAD)
-        self._build_tasks(nb)
-        self._build_list_tab(nb, "Blocked apps", "blocked_apps",
-                             "Process name as it appears in Task Manager, e.g. chrome.exe")
-        self._build_list_tab(nb, "Blocked sites", "blocked_sites",
-                             "Domain only, e.g. youtube.com (www. is added for you)")
-        self._build_list_tab(nb, "Always allowed sites", "allowed_sites",
-                             "Never blocked, e.g. your school portal: myschool.edu")
-        self._build_settings(nb)
-        self._build_log(nb)
-
-        self.refresh_tasks()
+        self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(1000, self._tick)
         if not self.ctl.admin():
-            self.log("Not running as administrator - website blocking will be skipped.")
+            self.log(t("not_admin"))
 
     # -- layout -------------------------------------------------------------
-    def _build_header(self):
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", **PAD)
-        self.status = ttk.Label(bar, text="Unlocked", font=("Segoe UI", 13, "bold"))
-        self.status.pack(side="left")
-        ttk.Button(bar, text="Stop / unlock", command=self.on_stop).pack(side="right", padx=4)
-        ttk.Button(bar, text="Break now", command=self.on_break_now).pack(side="right", padx=4)
-        self.start_btn = ttk.Button(bar, text="Start focus", command=self.on_start)
-        self.start_btn.pack(side="right", padx=4)
+    def _build_ui(self, tab=0):
+        """Build every widget in the current language. Called again on a language switch."""
+        rtl = i18n.is_rtl()
+        # "near" is where a line of text starts, "far" where it ends
+        self.near, self.far = ("right", "left") if rtl else ("left", "right")
+        self.anchor = "e" if rtl else "w"
+        self.justify = "right" if rtl else "left"
+        self.title(t("title"))
+
+        self._build_hero()
+        self.nb = ttk.Notebook(self)
+        self.nb.pack(fill="both", expand=True, padx=14, pady=(4, 12))
+        self._build_tasks(self.nb)
+        self._build_habits(self.nb)
+        self._build_list_tab(self.nb, t("tab_blocked_apps"), "blocked_apps",
+                             t("hint_blocked_apps"))
+        self._build_list_tab(self.nb, t("tab_blocked_sites"), "blocked_sites",
+                             t("hint_blocked_sites"))
+        self._build_list_tab(self.nb, t("tab_allowed_sites"), "allowed_sites",
+                             t("hint_allowed_sites"))
+        self._build_settings(self.nb)
+        self._build_log(self.nb)
+        self.nb.select(tab)
+
+        self.refresh_tasks()
+        self.refresh_habits()
+
+    def _build_hero(self):
+        """The panel that tells you, at a glance, what the app is doing to you."""
+        card = ttk.Frame(self, style="Card.TFrame")
+        card.pack(fill="x", padx=14, pady=(14, 8))
+
+        self.ring = theme.Ring(card)
+        self.ring.pack(side=self.near, padx=18, pady=16)
+
+        buttons = ttk.Frame(card, style="Card.TFrame")
+        buttons.pack(side=self.far, padx=18)
+        self.start_btn = theme.PillButton(buttons, t("start"), self.on_start,
+                                          kind="primary", bg=theme.SURFACE)
+        self.start_btn.pack(pady=3)
+        theme.PillButton(buttons, t("break_now"), self.on_break_now,
+                         kind="break", bg=theme.SURFACE).pack(pady=3)
+        theme.PillButton(buttons, t("stop"), self.on_stop,
+                         kind="danger", bg=theme.SURFACE).pack(pady=3)
+
+        middle = ttk.Frame(card, style="Card.TFrame")
+        middle.pack(side=self.near, fill="both", expand=True, pady=16)
+        # These three labels all shrink as the state changes ("Locked in" -> "Breathe").
+        # A label that resizes leaves the tail of the old text painted on the panel
+        # behind it, so each one spans the full width instead and lets `anchor` place
+        # the text. Filling beats a fixed width, which would clip a longer language.
+        self.headline = ttk.Label(middle, style="Card.TLabel", anchor=self.anchor,
+                                  font=theme.fonts()["display"], justify=self.justify)
+        self.headline.pack(fill="x")
+        self.status = ttk.Label(middle, style="Card.TLabel", foreground=theme.MUTED,
+                                anchor=self.anchor, justify=self.justify)
+        self.status.pack(fill="x", pady=(2, 10))
+        self.progress = ttk.Progressbar(middle, style="Bar.Horizontal.TProgressbar",
+                                        length=260, maximum=100)
+        self.progress.pack(anchor=self.anchor)
+        self.progress_label = ttk.Label(middle, style="Card.TLabel", foreground=theme.DIM,
+                                        anchor=self.anchor, font=theme.fonts()["small"],
+                                        justify=self.justify)
+        self.progress_label.pack(fill="x", pady=(4, 0))
 
     def _build_tasks(self, nb):
         frame = ttk.Frame(nb)
-        nb.add(frame, text="To-do")
+        nb.add(frame, text=t("tab_todo"))
         entry_row = ttk.Frame(frame)
         entry_row.pack(fill="x", **PAD)
-        ttk.Label(entry_row, text="Task").pack(side="left")
-        self.task_entry = ttk.Entry(entry_row)
-        self.task_entry.pack(side="left", fill="x", expand=True, padx=(6, 12))
+        ttk.Label(entry_row, text=t("task")).pack(side=self.near)
+        self.task_entry = ttk.Entry(entry_row, justify=self.justify)
+        self.task_entry.pack(side=self.near, fill="x", expand=True, padx=(6, 12))
         self.task_entry.bind("<Return>", lambda _e: self.on_add_task())
-        ttk.Label(entry_row, text="Link (optional)").pack(side="left")
-        self.link_entry = ttk.Entry(entry_row, width=28)
-        self.link_entry.pack(side="left", padx=6)
+        ttk.Label(entry_row, text=t("link_optional")).pack(side=self.near)
+        self.link_entry = ttk.Entry(entry_row, width=24)
+        self.link_entry.pack(side=self.near, padx=6)
         self.link_entry.bind("<Return>", lambda _e: self.on_add_task())
-        ttk.Button(entry_row, text="Add", command=self.on_add_task).pack(side="left", padx=6)
-        ttk.Label(frame, text="A link can be a website, or a folder or file on this "
-                              "computer - wherever the task actually gets done.",
-                  foreground="#555").pack(anchor="w", padx=8)
+        theme.PillButton(entry_row, t("add"), self.on_add_task,
+                         kind="primary").pack(side=self.near, padx=6)
+        ttk.Label(frame, text=t("link_hint"), style="Muted.TLabel",
+                  justify=self.justify).pack(anchor=self.anchor, padx=8)
 
-        self.task_list = tk.Listbox(frame, activestyle="none", font=("Segoe UI", 11))
+        # the action row is packed first, against the bottom, so a long task list
+        # can never push it off the window
+        row = ttk.Frame(frame)
+        row.pack(side="bottom", fill="x", **PAD)
+        self.task_list = theme.listbox(frame, justify=self.justify)
         self.task_list.pack(fill="both", expand=True, **PAD)
         self.task_list.bind("<Double-Button-1>", lambda _e: self.on_complete())
 
+        theme.PillButton(row, t("mark_done"), self.on_complete,
+                         kind="break").pack(side=self.near)
+        ttk.Button(row, text=t("open_link"), command=self.on_open_link).pack(side=self.near, padx=6)
+        ttk.Button(row, text=t("edit_link"), command=self.on_edit_link).pack(side=self.near)
+        ttk.Button(row, text=t("undo_done"), command=self.on_uncomplete).pack(side=self.near, padx=6)
+        ttk.Button(row, text=t("delete"), command=self.on_delete_task).pack(side=self.near)
+
+    def _build_habits(self, nb):
+        frame = ttk.Frame(nb)
+        nb.add(frame, text=t("tab_habits"))
+        entry_row = ttk.Frame(frame)
+        entry_row.pack(fill="x", **PAD)
+        ttk.Label(entry_row, text=t("habit")).pack(side=self.near)
+        self.habit_entry = ttk.Entry(entry_row, justify=self.justify)
+        self.habit_entry.pack(side=self.near, fill="x", expand=True, padx=6)
+        self.habit_entry.bind("<Return>", lambda _e: self.on_add_habit())
+        theme.PillButton(entry_row, t("add"), self.on_add_habit,
+                         kind="primary").pack(side=self.near, padx=6)
+        ttk.Label(frame, text=t("habit_hint"), style="Muted.TLabel",
+                  justify=self.justify).pack(anchor=self.anchor, padx=8)
+
         row = ttk.Frame(frame)
-        row.pack(fill="x", **PAD)
-        ttk.Button(row, text="Mark done (starts break)", command=self.on_complete).pack(side="left")
-        ttk.Button(row, text="Open link", command=self.on_open_link).pack(side="left", padx=6)
-        ttk.Button(row, text="Edit link", command=self.on_edit_link).pack(side="left")
-        ttk.Button(row, text="Undo done", command=self.on_uncomplete).pack(side="left", padx=6)
-        ttk.Button(row, text="Delete", command=self.on_delete_task).pack(side="left")
+        row.pack(side="bottom", fill="x", **PAD)
+        self.habit_list = theme.listbox(frame, justify=self.justify)
+        self.habit_list.pack(fill="both", expand=True, **PAD)
+        self.habit_list.bind("<Double-Button-1>", lambda _e: self.on_toggle_habit())
+
+        theme.PillButton(row, t("habit_toggle"), self.on_toggle_habit,
+                         kind="break").pack(side=self.near)
+        ttk.Button(row, text=t("delete"), command=self.on_delete_habit).pack(side=self.near, padx=6)
 
     def _build_list_tab(self, nb, title, key, hint):
         frame = ttk.Frame(nb)
         nb.add(frame, text=title)
-        ttk.Label(frame, text=hint, foreground="#555").pack(anchor="w", **PAD)
-        listbox = tk.Listbox(frame, font=("Consolas", 10))
+        ttk.Label(frame, text=hint, style="Muted.TLabel").pack(anchor=self.anchor, **PAD)
+        listbox = theme.listbox(frame, font=theme.fonts()["mono"])
         listbox.pack(fill="both", expand=True, **PAD)
         row = ttk.Frame(frame)
         row.pack(fill="x", **PAD)
         entry = ttk.Entry(row)
-        entry.pack(side="left", fill="x", expand=True)
+        entry.pack(side=self.near, fill="x", expand=True)
 
         def refill():
             listbox.delete(0, "end")
             for item in self.ctl.cfg[key]:
-                listbox.insert("end", item)
+                listbox.insert("end", "  " + item)
 
         def add(_e=None):
             value = entry.get().strip()
@@ -107,75 +186,94 @@ class App(tk.Tk):
                 refill()
 
         entry.bind("<Return>", add)
-        ttk.Button(row, text="Add", command=add).pack(side="left", padx=6)
-        ttk.Button(row, text="Remove selected", command=remove).pack(side="left")
+        theme.PillButton(row, t("add"), add, kind="primary").pack(side=self.near, padx=6)
+        ttk.Button(row, text=t("remove_selected"), command=remove).pack(side=self.near)
         refill()
 
     def _build_settings(self, nb):
         frame = ttk.Frame(nb)
-        nb.add(frame, text="Settings")
+        nb.add(frame, text=t("tab_settings"))
         cfg = self.ctl.cfg
+        self.v_lang = tk.StringVar(value=i18n.LANGUAGES[i18n.current()])
         self.v_each = tk.BooleanVar(value=cfg["break_after_each_task"])
         self.v_task_min = tk.StringVar(value=str(cfg["task_break_minutes"]))
         self.v_list_on = tk.BooleanVar(value=cfg["break_after_list_enabled"])
         self.v_list_min = tk.StringVar(value=str(cfg["break_after_list_minutes"]))
-        self.v_mode = tk.StringVar(value=cfg["block_mode"])
+        self.mode_names = [t("mode_" + m) for m in MODES]
+        mode = cfg["block_mode"] if cfg["block_mode"] in MODES else MODES[0]
+        self.v_mode = tk.StringVar(value=self.mode_names[MODES.index(mode)])
         self.v_sites = tk.BooleanVar(value=cfg["block_websites"])
         self.v_close_browsers = tk.BooleanVar(value=cfg["close_browsers_on_lock"])
         self.v_poll = tk.StringVar(value=str(cfg["poll_seconds"]))
 
+        # labels sit on the reading-start side, their inputs after them
+        lab, inp = (1, 0) if i18n.is_rtl() else (0, 1)
+        whole = {"column": 0, "columnspan": 2, "sticky": self.anchor}
         r = 0
-        ttk.Checkbutton(frame, text="Take a break after each finished task",
-                        variable=self.v_each).grid(row=r, column=0, columnspan=2,
-                                                   sticky="w", **PAD)
+        ttk.Label(frame, text=t("language")).grid(row=r, column=lab, sticky=self.anchor, **PAD)
+        lang_box = ttk.Combobox(frame, textvariable=self.v_lang, width=24, state="readonly",
+                                values=list(i18n.LANGUAGES.values()))
+        lang_box.grid(row=r, column=inp, sticky=self.anchor, **PAD)
+        lang_box.bind("<<ComboboxSelected>>", self.on_language)
         r += 1
-        ttk.Label(frame, text="Break after each task (minutes)").grid(row=r, column=0,
-                                                                     sticky="w", **PAD)
-        ttk.Entry(frame, textvariable=self.v_task_min, width=8).grid(row=r, column=1,
-                                                                    sticky="w", **PAD)
+        ttk.Checkbutton(frame, text=t("set_each"), variable=self.v_each).grid(row=r, **whole, **PAD)
         r += 1
-        ttk.Checkbutton(frame, text="Take a longer break when the whole list is finished",
-                        variable=self.v_list_on).grid(row=r, column=0, columnspan=2,
-                                                      sticky="w", **PAD)
+        ttk.Label(frame, text=t("set_each_min")).grid(row=r, column=lab, sticky=self.anchor, **PAD)
+        ttk.Entry(frame, textvariable=self.v_task_min, width=8).grid(row=r, column=inp,
+                                                                    sticky=self.anchor, **PAD)
         r += 1
-        ttk.Label(frame, text="Break after whole list (minutes)").grid(row=r, column=0,
-                                                                      sticky="w", **PAD)
-        ttk.Entry(frame, textvariable=self.v_list_min, width=8).grid(row=r, column=1,
-                                                                     sticky="w", **PAD)
+        ttk.Checkbutton(frame, text=t("set_list_on"), variable=self.v_list_on).grid(row=r, **whole,
+                                                                                    **PAD)
         r += 1
-        ttk.Label(frame, text="How blocked apps are handled").grid(row=r, column=0,
-                                                                   sticky="w", **PAD)
+        ttk.Label(frame, text=t("set_list_min")).grid(row=r, column=lab, sticky=self.anchor, **PAD)
+        ttk.Entry(frame, textvariable=self.v_list_min, width=8).grid(row=r, column=inp,
+                                                                     sticky=self.anchor, **PAD)
+        r += 1
+        ttk.Label(frame, text=t("set_mode")).grid(row=r, column=lab, sticky=self.anchor, **PAD)
         ttk.Combobox(frame, textvariable=self.v_mode, width=24, state="readonly",
-                     values=["suspend", "close"]).grid(row=r, column=1, sticky="w", **PAD)
+                     values=self.mode_names).grid(row=r, column=inp, sticky=self.anchor, **PAD)
         r += 1
-        ttk.Label(frame, text="suspend = freeze the app, nothing is lost (recommended)\n"
-                             "close = terminate it, unsaved work may be lost",
-                  foreground="#555").grid(row=r, column=0, columnspan=2, sticky="w", **PAD)
+        ttk.Label(frame, text=t("mode_hint"), style="Muted.TLabel",
+                  justify=self.justify).grid(row=r, **whole, **PAD)
         r += 1
-        ttk.Checkbutton(frame, text="Also block websites (needs the app run as administrator)",
-                        variable=self.v_sites).grid(row=r, column=0, columnspan=2,
-                                                    sticky="w", **PAD)
+        ttk.Checkbutton(frame, text=t("set_sites"), variable=self.v_sites).grid(row=r, **whole, **PAD)
         r += 1
-        ttk.Checkbutton(frame, text="Close browsers when locking (otherwise an open "
-                                    "YouTube tab keeps playing for minutes)",
-                        variable=self.v_close_browsers).grid(row=r, column=0, columnspan=2,
-                                                             sticky="w", **PAD)
+        ttk.Checkbutton(frame, text=t("set_close_browsers"),
+                        variable=self.v_close_browsers).grid(row=r, **whole, **PAD)
         r += 1
-        ttk.Label(frame, text="Check for blocked apps every (seconds)").grid(row=r, column=0,
-                                                                            sticky="w", **PAD)
-        ttk.Entry(frame, textvariable=self.v_poll, width=8).grid(row=r, column=1,
-                                                                 sticky="w", **PAD)
+        ttk.Label(frame, text=t("set_poll")).grid(row=r, column=lab, sticky=self.anchor, **PAD)
+        ttk.Entry(frame, textvariable=self.v_poll, width=8).grid(row=r, column=inp,
+                                                                 sticky=self.anchor, **PAD)
         r += 1
-        ttk.Button(frame, text="Save settings", command=self.on_save_settings)\
-            .grid(row=r, column=0, sticky="w", **PAD)
+        holder = ttk.Frame(frame)
+        holder.grid(row=r, column=lab, sticky=self.anchor, **PAD)
+        theme.PillButton(holder, t("save_settings"), self.on_save_settings,
+                         kind="primary").pack()
 
     def _build_log(self, nb):
         frame = ttk.Frame(nb)
-        nb.add(frame, text="Activity")
-        self.log_box = tk.Text(frame, height=10, state="disabled", font=("Consolas", 9))
+        nb.add(frame, text=t("tab_activity"))
+        self.log_box = theme.text(frame, height=10)
         self.log_box.pack(fill="both", expand=True, **PAD)
+        self.log_box.insert("end", "".join(line + "\n" for line in self._log_lines))
+        self.log_box.see("end")
+        self.log_box.config(state="disabled")
 
     # -- actions ------------------------------------------------------------
+    def on_language(self, _e=None):
+        names = list(i18n.LANGUAGES.values())
+        code = list(i18n.LANGUAGES)[names.index(self.v_lang.get())]
+        if code == i18n.current():
+            return
+        self.ctl.cfg["language"] = code
+        self.ctl.save()
+        i18n.set_language(code)
+        tab = self.nb.index("current")
+        self.log_box = None                   # log() skips the box until it's rebuilt
+        for child in self.winfo_children():
+            child.destroy()
+        self._build_ui(tab)
+
     def on_add_task(self):
         self.ctl.add_task(self.task_entry.get(), self.link_entry.get())
         self.task_entry.delete(0, "end")
@@ -189,17 +287,15 @@ class App(tk.Tk):
         ok, detail = self.ctl.open_task_link(idx)
         self.log(detail)
         if not ok:
-            messagebox.showinfo("No link" if "no link" in detail else "Could not open",
-                                detail)
+            messagebox.showinfo(t("no_link_title") if "no link" in detail
+                                else t("open_failed_title"), detail)
 
     def on_edit_link(self):
         idx = self._selected()
         if idx is None:
             return
-        link = simpledialog.askstring(
-            "Link", "Where does this task get done?\n"
-                    "A website, or a folder or file on this computer:",
-            initialvalue=self.ctl.task_link(idx), parent=self)
+        link = simpledialog.askstring(t("link_title"), t("link_prompt"),
+                                      initialvalue=self.ctl.task_link(idx), parent=self)
         if link is not None:
             self.ctl.set_task_link(idx, link)
             self.refresh_tasks()
@@ -212,13 +308,18 @@ class App(tk.Tk):
         idx = self._selected()
         if idx is None:
             return
+        was_pending = not self.ctl.tasks[idx]["done"]
         self.ctl.complete_task(idx)
+        if was_pending:
+            self.ring.pulse()                 # a small reward for ticking one off
         self.refresh_tasks()
 
     def on_uncomplete(self):
         idx = self._selected()
         if idx is not None:
-            self.ctl.uncomplete_task(idx)
+            changed = self.ctl.uncomplete_task(idx)   # ends a break, if one was running
+            if changed:
+                self.log(changed)
             self.refresh_tasks()
 
     def on_delete_task(self):
@@ -227,17 +328,34 @@ class App(tk.Tk):
             self.ctl.remove_task(idx)
             self.refresh_tasks()
 
+    def _selected_habit(self):
+        sel = self.habit_list.curselection()
+        return sel[0] if sel else None
+
+    def on_add_habit(self):
+        self.ctl.add_habit(self.habit_entry.get())
+        self.habit_entry.delete(0, "end")
+        self.refresh_habits()
+
+    def on_toggle_habit(self):
+        idx = self._selected_habit()
+        if idx is not None:
+            self.ctl.toggle_habit(idx)
+            self.ring.pulse()
+            self.refresh_habits()
+
+    def on_delete_habit(self):
+        idx = self._selected_habit()
+        if idx is not None:
+            self.ctl.remove_habit(idx)
+            self.refresh_habits()
+
     def on_start(self):
         if self.ctl.pending_count() == 0:
-            messagebox.showinfo("Nothing to do", "Add at least one task first.")
+            messagebox.showinfo(t("nothing_title"), t("nothing_body"))
             return
         if self.ctl.cfg["block_websites"] and not self.ctl.admin():
-            messagebox.showwarning(
-                "Websites will not be blocked",
-                "Editing the hosts file needs administrator rights.\n"
-                "Apps will still be locked. Restart the app as administrator "
-                "(run_as_admin.bat) to block websites too.",
-            )
+            messagebox.showwarning(t("sites_warn_title"), t("sites_warn_body"))
         self.ctl.start_focus()
         self.refresh_tasks()
 
@@ -256,19 +374,19 @@ class App(tk.Tk):
             cfg["break_after_list_minutes"] = max(0.1, float(self.v_list_min.get()))
             cfg["poll_seconds"] = max(1, int(float(self.v_poll.get())))
         except ValueError:
-            messagebox.showerror("Bad value", "Break lengths and interval must be numbers.")
+            messagebox.showerror(t("bad_value_title"), t("bad_value_body"))
             return
         cfg["break_after_each_task"] = self.v_each.get()
         cfg["break_after_list_enabled"] = self.v_list_on.get()
-        cfg["block_mode"] = self.v_mode.get()
+        cfg["block_mode"] = MODES[self.mode_names.index(self.v_mode.get())]
         cfg["block_websites"] = self.v_sites.get()
         cfg["close_browsers_on_lock"] = self.v_close_browsers.get()
         self.ctl.save()
-        self.log("settings saved")
+        self.log(t("settings_saved"))
 
     def on_close(self):
         if self.ctl.state != IDLE and not messagebox.askyesno(
-            "Still locked", "Quitting will unlock everything. Quit anyway?"
+            t("still_locked_title"), t("still_locked_body")
         ):
             return
         self.ctl.stop()
@@ -279,38 +397,95 @@ class App(tk.Tk):
         sel = self._selected()
         self.task_list.delete(0, "end")
         for task in self.ctl.tasks:
-            mark = "[x]" if task["done"] else "[ ]"
-            line = mark + " " + task["text"]
+            mark = "✓" if task["done"] else "○"
+            parts = []
             if task.get("link"):
-                line += "   ->  " + task["link"]
-            self.task_list.insert("end", line)
-            if task["done"]:
-                self.task_list.itemconfig("end", foreground="#888")
+                # the arrow points from the task to its link in either direction
+                parts.append(task["link"] + "  <-" if i18n.is_rtl() else "->  " + task["link"])
+            line = self._line(mark, task["text"], *parts)
+            self.task_list.insert("end", "  " + line)
+            self.task_list.itemconfig("end", foreground=theme.DIM if task["done"] else theme.TEXT)
         if sel is not None and sel < self.task_list.size():
             self.task_list.selection_set(sel)
         self.refresh_status()
 
+    def refresh_habits(self):
+        sel = self._selected_habit()
+        self.habit_list.delete(0, "end")
+        for habit in self.ctl.habits:
+            mark = "✓" if habits.is_done(habit) else "○"
+            days = habits.last_days(habit)
+            if i18n.is_rtl():
+                days.reverse()                # oldest on the right, where reading starts
+            dots = "".join("●" if d else "○" for d in days)
+            line = self._line(mark, habit["name"], dots,
+                              t("habit_streak", n=habits.streak(habit)))
+            self.habit_list.insert("end", "  " + line)
+            self.habit_list.itemconfig(
+                "end", foreground=theme.DONE_C if habits.is_done(habit) else theme.TEXT)
+        if sel is not None and sel < self.habit_list.size():
+            self.habit_list.selection_set(sel)
+
+    def _line(self, mark, name, *rest):
+        """One list row - "[x] name   rest..." - that stays in order with mixed scripts.
+
+        Tk lays every row out left to right, even right-aligned, and Windows' bidi
+        rules then let an Arabic name swallow the brackets and numbers beside it.
+        So each part is fenced off with a left-to-right mark, and for a right-to-left
+        language the parts are placed in visual order: checkbox rightmost.
+        """
+        lrm = "‎"
+        if i18n.is_rtl():
+            parts = list(rest[::-1]) + [name + lrm + " " + mark]
+        else:
+            parts = [mark + " " + name] + list(rest)
+        return lrm + (lrm + "   ").join(parts) + lrm
+
     def refresh_status(self):
         state = self.ctl.state
         left = self.ctl.pending_count()
+        total = len(self.ctl.tasks)
+        done = total - left
+
         if state == FOCUS:
-            text, color = "LOCKED - {} task(s) left".format(left), "#b00020"
+            self._break_total = None
+            text, colour = t("status_focus", n=left), theme.FOCUS_C
+            headline = t("headline_focus")
+            self.ring.set(done / total if total else 0, f"{done}/{total}",
+                          t("ring_focus_sub"), theme.FOCUS_C)
         elif state == BREAK:
             secs = self.ctl.seconds_left()
-            text = "BREAK - {}:{:02d} left ({})".format(secs // 60, secs % 60,
-                                                        self.ctl.break_reason)
-            color = "#0b6b2f"
+            if self._break_total is None:     # first sight of this break: that is its length
+                self._break_total = max(secs, 1)
+            reason = self.ctl.break_reason
+            reason = t(REASONS[reason]) if reason in REASONS else reason
+            text = t("status_break", m=secs // 60, s="{:02d}".format(secs % 60), reason=reason)
+            colour = theme.BREAK_C
+            headline = t("headline_break")
+            self.ring.set(secs / self._break_total,
+                          "{}:{:02d}".format(secs // 60, secs % 60),
+                          t("ring_break_sub"), theme.BREAK_C)
         else:
-            text, color = "Unlocked - not in a focus session", "#333"
-        self.status.config(text=text, foreground=color)
-        self.start_btn.config(state="disabled" if state == FOCUS else "normal")
+            self._break_total = None
+            text, colour = t("status_idle"), theme.IDLE_C
+            headline = t("headline_idle")
+            self.ring.set(done / total if total else 0, f"{done}/{total}" if total else "0",
+                          t("ring_idle_sub"), theme.IDLE_C)
+
+        self.headline.config(text=headline, foreground=colour)
+        self.status.config(text=text)
+        self.progress.config(value=(done / total * 100) if total else 0)
+        self.progress_label.config(text=t("progress", done=done, total=total))
+        self.start_btn.set_enabled(state != FOCUS)
 
     def log(self, message):
+        line = str(message).rstrip()
+        self._log_lines.append(line)
         box = getattr(self, "log_box", None)
         if box is None:
             return
         box.config(state="normal")
-        box.insert("end", str(message).rstrip() + "\n")
+        box.insert("end", line + "\n")
         box.see("end")
         box.config(state="disabled")
 
@@ -319,6 +494,9 @@ class App(tk.Tk):
         if changed:
             self.log(changed)
             self.refresh_tasks()
+        if habits.today() != self._habit_day:     # past midnight: today's ticks reset
+            self._habit_day = habits.today()
+            self.refresh_habits()
         self.refresh_status()
         self.after(1000, self._tick)
 
