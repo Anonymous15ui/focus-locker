@@ -79,8 +79,9 @@ class App(tk.Tk):
                          kind="break", bg=theme.SURFACE).pack(pady=3)
         theme.PillButton(buttons, t("stop"), self.on_stop,
                          kind="danger", bg=theme.SURFACE).pack(pady=3)
-        theme.PillButton(buttons, t("theme_light" if theme.MODE == "dark" else "theme_dark"),
-                         self.on_toggle_theme, kind="ghost", bg=theme.SURFACE).pack(pady=3)
+        # one click walks to the next scheme; the full list lives in Settings
+        theme.PillButton(buttons, self._next_scheme().title(), self.on_next_scheme,
+                         kind="ghost", bg=theme.SURFACE).pack(pady=3)
 
         middle = ttk.Frame(card, style="Card.TFrame")
         middle.pack(side=self.near, fill="both", expand=True, pady=16)
@@ -124,9 +125,9 @@ class App(tk.Tk):
         # can never push it off the window
         row = ttk.Frame(frame)
         row.pack(side="bottom", fill="x", **PAD)
-        self.task_list = theme.listbox(frame, justify=self.justify)
+        self.task_list = theme.RowList(frame, on_toggle=self.on_row_toggle,
+                                       on_activate=self.on_row_toggle, rtl=i18n.is_rtl())
         self.task_list.pack(fill="both", expand=True, **PAD)
-        self.task_list.bind("<Double-Button-1>", lambda _e: self.on_complete())
 
         theme.PillButton(row, t("mark_done"), self.on_complete,
                          kind="break").pack(side=self.near)
@@ -151,9 +152,10 @@ class App(tk.Tk):
 
         row = ttk.Frame(frame)
         row.pack(side="bottom", fill="x", **PAD)
-        self.habit_list = theme.listbox(frame, justify=self.justify)
+        self.habit_list = theme.RowList(frame, on_toggle=self.on_habit_row_toggle,
+                                        on_activate=self.on_habit_row_toggle,
+                                        rtl=i18n.is_rtl())
         self.habit_list.pack(fill="both", expand=True, **PAD)
-        self.habit_list.bind("<Double-Button-1>", lambda _e: self.on_toggle_habit())
 
         theme.PillButton(row, t("habit_toggle"), self.on_toggle_habit,
                          kind="break").pack(side=self.near)
@@ -220,6 +222,13 @@ class App(tk.Tk):
                                 values=list(i18n.LANGUAGES.values()))
         lang_box.grid(row=r, column=inp, sticky=self.anchor, **PAD)
         lang_box.bind("<<ComboboxSelected>>", self.on_language)
+        r += 1
+        self.v_scheme = tk.StringVar(value=theme.MODE)
+        ttk.Label(frame, text=t("scheme")).grid(row=r, column=lab, sticky=self.anchor, **PAD)
+        scheme_box = ttk.Combobox(frame, textvariable=self.v_scheme, width=24, state="readonly",
+                                  values=list(theme.SCHEMES))
+        scheme_box.grid(row=r, column=inp, sticky=self.anchor, **PAD)
+        scheme_box.bind("<<ComboboxSelected>>", self.on_pick_scheme)
         r += 1
         ttk.Checkbutton(frame, text=t("set_each"), variable=self.v_each).grid(row=r, **whole, **PAD)
         r += 1
@@ -292,11 +301,22 @@ class App(tk.Tk):
         i18n.set_language(code)
         self._rebuild()
 
-    def on_toggle_theme(self):
-        mode = theme.other_mode()
-        self.ctl.cfg["theme"] = mode
+    def _next_scheme(self):
+        names = list(theme.SCHEMES)
+        return names[(names.index(theme.MODE) + 1) % len(names)]
+
+    def on_next_scheme(self):
+        self.set_scheme(self._next_scheme())
+
+    def on_pick_scheme(self, _e=None):
+        self.set_scheme(self.v_scheme.get())
+
+    def set_scheme(self, name):
+        if name not in theme.SCHEMES or name == theme.MODE:
+            return
+        self.ctl.cfg["theme"] = name
         self.ctl.save()
-        theme.apply(self, mode)
+        theme.apply(self, name)
         self._rebuild()
 
     def on_add_task(self):
@@ -326,8 +346,15 @@ class App(tk.Tk):
             self.refresh_tasks()
 
     def _selected(self):
-        sel = self.task_list.curselection()
-        return sel[0] if sel else None
+        return self.task_list.selected()
+
+    def on_row_toggle(self, index):
+        """Clicking a task's box (or double-clicking the row) ticks it both ways."""
+        self.task_list.select(index)
+        if self.ctl.tasks[index]["done"]:
+            self.on_uncomplete()
+        else:
+            self.on_complete()
 
     def on_complete(self):
         idx = self._selected()
@@ -354,8 +381,11 @@ class App(tk.Tk):
             self.refresh_tasks()
 
     def _selected_habit(self):
-        sel = self.habit_list.curselection()
-        return sel[0] if sel else None
+        return self.habit_list.selected()
+
+    def on_habit_row_toggle(self, index):
+        self.habit_list.select(index)
+        self.on_toggle_habit()
 
     def on_add_habit(self):
         self.ctl.add_habit(self.habit_entry.get())
@@ -419,54 +449,30 @@ class App(tk.Tk):
 
     # -- view ---------------------------------------------------------------
     def refresh_tasks(self):
-        sel = self._selected()
-        self.task_list.delete(0, "end")
-        for task in self.ctl.tasks:
-            mark = "✓" if task["done"] else "○"
-            parts = []
-            if task.get("link"):
-                # the arrow points from the task to its link in either direction
-                parts.append(task["link"] + "  <-" if i18n.is_rtl() else "->  " + task["link"])
-            line = self._line(mark, task["text"], *parts)
-            self.task_list.insert("end", "  " + line)
-            self.task_list.itemconfig("end", foreground=theme.DIM if task["done"] else theme.TEXT)
-        if sel is not None and sel < self.task_list.size():
-            self.task_list.selection_set(sel)
+        rows = []
+        for position, task in enumerate(self.ctl.tasks):
+            rows.append({
+                "checked": task["done"],
+                "text": task["text"],
+                "trail": task.get("link") or "",
+                "accent": theme.ACCENTS[position % len(theme.ACCENTS)],
+            })
+        self.task_list.set_rows(rows)
         self.refresh_status()
 
     def refresh_habits(self):
-        sel = self._selected_habit()
-        self.habit_list.delete(0, "end")
+        rows = []
         for position, habit in enumerate(self.ctl.habits):
-            mark = "✓" if habits.is_done(habit) else "○"
-            days = habits.last_days(habit)
-            if i18n.is_rtl():
-                days.reverse()                # oldest on the right, where reading starts
-            dots = "".join("●" if d else "○" for d in days)
-            line = self._line(mark, habit["name"], dots,
-                              t("habit_streak", n=habits.streak(habit)))
-            self.habit_list.insert("end", "  " + line)
-            # each habit keeps its own colour, so a long list stays easy to scan
-            accent = theme.ACCENTS[position % len(theme.ACCENTS)]
-            self.habit_list.itemconfig(
-                "end", foreground=accent if habits.is_done(habit) else theme.MUTED)
-        if sel is not None and sel < self.habit_list.size():
-            self.habit_list.selection_set(sel)
-
-    def _line(self, mark, name, *rest):
-        """One list row - "[x] name   rest..." - that stays in order with mixed scripts.
-
-        Tk lays every row out left to right, even right-aligned, and Windows' bidi
-        rules then let an Arabic name swallow the brackets and numbers beside it.
-        So each part is fenced off with a left-to-right mark, and for a right-to-left
-        language the parts are placed in visual order: checkbox rightmost.
-        """
-        lrm = "‎"
-        if i18n.is_rtl():
-            parts = list(rest[::-1]) + [name + lrm + " " + mark]
-        else:
-            parts = [mark + " " + name] + list(rest)
-        return lrm + (lrm + "   ").join(parts) + lrm
+            streak = habits.streak(habit)
+            rows.append({
+                "checked": habits.is_done(habit),
+                "text": habit["name"],
+                "dots": habits.last_days(habit),
+                "note": t("habit_streak", n=streak),
+                "star": streak >= 3,          # a real star once it is a run worth keeping
+                "accent": theme.ACCENTS[position % len(theme.ACCENTS)],
+            })
+        self.habit_list.set_rows(rows)
 
     def refresh_status(self):
         state = self.ctl.state

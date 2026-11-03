@@ -71,9 +71,23 @@ Or manually, from the project folder: `.venv\Scripts\python.exe main.py`
   break back too. Outside a session it just un-ticks the task.
 - **Break now** starts an unscheduled break; **Stop / unlock** ends the session.
 
-The header shows where you stand at a glance: a ring that counts a break down in
-green and fills with tasks done in violet while you're locked in, the state in
-words, and a progress bar for the list. Ticking a task off gives the ring a pulse.
+The header shows where you stand at a glance: a ring that counts a break down and
+fills with tasks done while you are locked in, the state in words, and a progress
+bar for the list. Ticking a task off gives the ring a pulse.
+
+Above it is a sky that follows the session. Starting one slides the sun down behind
+the hills while the moon climbs and the stars come out; a break brings daylight
+back. It is drawn, not a bundled picture, so it recolours with the scheme and costs
+the .exe nothing.
+
+Tasks and habits are drawn rather than listed as plain text: a coloured checkbox you
+can click straight on, a chevron before a task's link, a dot per day for habits,
+and a star once a streak reaches three days. Each row keeps its own colour.
+
+**Colour schemes** - nine of them: dark, light, rose, ocean, forest, sunset, calm,
+sky and grape. The button under Stop/unlock walks to the next one, or pick one in
+Settings. Everything - buttons, ring, sky, checkboxes, text - is drawn from the
+scheme, and your choice is remembered.
 
 ## Habits
 
