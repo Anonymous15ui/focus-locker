@@ -1,20 +1,7 @@
-# virtualenv
-.venv/
-
-# python
-__pycache__/
-*.py[cod]
-
-# your own tasks, blocklists and settings - personal, not part of the app
-data/
-
-# PyInstaller output - the built .exe belongs in a GitHub Release, not the repo
-build/
-dist/
-*.spec
-
-# windows / editors
-Thumbs.db
-desktop.ini
-.vscode/
-.idea/
+# The GitHub page carries the app and its README, nothing else.
+# Everything below still lives on disk and in this repo's history - see the
+# README's "Source code" section for how to get it back.
+*
+!.gitignore
+!README.md
+!FocusLocker.exe

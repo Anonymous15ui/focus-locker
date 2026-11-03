@@ -1,159 +1,98 @@
 # Focus Locker
 
-A Windows to-do app that locks the apps and websites you pick while you work, and
-unlocks them for a break when you finish a task.
+A Windows app that locks the apps and websites you pick while you work through a
+to-do list, and unlocks them for a break when you finish something.
 
-## Just want to use it?
+## Download
 
-Download **FocusLocker.exe** from the
-[Releases page](https://github.com/Anonymous15ui/focus-locker/releases) and
-double-click it. One file, no Python, no setup. Windows will ask for
-administrator — that is how it edits the hosts file to block websites, and the
-app can only block apps without it.
+Click **FocusLocker.exe** above, then the download button. One file — no Python,
+no installer, no setup.
 
 Two things to expect the first time:
 
-- **"Windows protected your PC"** — click *More info* → *Run anyway*. That is
-  SmartScreen flagging an unsigned program, not a virus. Signing it costs money.
-- Some antivirus tools are suspicious of any PyInstaller build. If yours quarantines
-  it, the source is right here and `build_exe.bat` rebuilds it yourself.
+- Windows will ask for **administrator**. That is how it edits the hosts file to
+  block websites; without it, only apps get blocked.
+- **"Windows protected your PC"** → *More info* → *Run anyway*. That is
+  SmartScreen flagging an unsigned program, not a virus. Signing costs money.
 
-The rest of this file is for running or changing the source.
-
-## Setup
-
-Needs Windows and **Python 3.9+** — install it from
-[python.org](https://www.python.org/downloads/) and tick *"Add python.exe to
-PATH"* on the first screen of the installer.
-
-Then just run `run.bat`. The first time, it builds what it needs and then starts
-the app. You can also double-click **`setup.bat`** to do only that part.
-
-Doing it by hand, if you prefer:
-
-```
-py -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-`.venv` is deliberately **not** in the repo and must never be committed: it
-hardcodes absolute paths to the machine that created it and to one exact Python
-build, so a copied one is broken everywhere else. `requirements.txt` rebuilds it
-in seconds.
-
-## Run it
-
-```
-run.bat                 # apps are locked, websites are not
-run_as_admin.bat        # apps AND websites are locked (hosts file needs admin)
-```
-
-Or manually, from the project folder: `.venv\Scripts\python.exe main.py`
+Some antivirus tools are suspicious of this kind of build on principle. If yours
+quarantines it, that is a false positive, and the source it was built from is in
+this repository's history.
 
 ## How it works
 
-- **To-do tab** — add tasks, double-click (or "Mark done") to complete one.
-  Each task can carry an optional **link**: type it in the second box when you add
-  the task, or select a task and press "Edit link". Select a task and press
-  "Open link" to jump straight there. A link can be a website (`app.edu-nation.app`
-  — no need to type `https://`), or a folder or file on this computer, which opens
-  in Explorer or its usual app instead of a browser. Tasks with a link show it
-  after an arrow in the list.
-- **Start focus** — from that moment, every app on your blocked list gets frozen
-  the instant it is running, and blocked domains stop resolving.
-- **Finish a task** → a break starts (5 minutes by default). Everything unlocks.
-  When the timer runs out, it locks again automatically and you carry on. You get
-  a 30-second warning in the Activity log before that happens.
-- **Finish the whole list** → the longer end-of-list break starts (15 min default),
-  and after that nothing re-locks, because there is nothing left to do.
+Add your tasks, press **Start focus**, and everything on your blocked list is
+frozen the moment it runs while blocked domains stop resolving.
+
+- **Finish a task** → a break starts (5 minutes by default) and everything
+  unlocks. When the timer runs out it locks again by itself, with a 30-second
+  warning first.
+- **Finish the whole list** → the longer end-of-list break runs (15 minutes by
+  default), and then nothing re-locks, because there is nothing left to do.
 - **Undo done** on a finished task ends the break it earned and locks straight
-  back in — the break was for finishing something, so taking that back takes the
-  break back too. Outside a session it just un-ticks the task.
+  back in.
 - **Break now** starts an unscheduled break; **Stop / unlock** ends the session.
 
-The header shows where you stand at a glance: a ring that counts a break down and
-fills with tasks done while you are locked in, the state in words, and a progress
-bar for the list. Ticking a task off gives the ring a pulse.
+Each task can carry an optional **link** — a website, or a folder or file on this
+computer — so "Open link" takes you straight to where the work happens.
 
-Above it is a sky that follows the session. Starting one slides the sun down behind
-the hills while the moon climbs and the stars come out; a break brings daylight
-back. It is drawn, not a bundled picture, so it recolours with the scheme and costs
-the .exe nothing.
-
-Tasks and habits are drawn rather than listed as plain text: a coloured checkbox you
-can click straight on, a chevron before a task's link, a dot per day for habits,
-and a star once a streak reaches three days. Each row keeps its own colour.
-
-**Colour schemes** - nine of them: dark, light, rose, ocean, forest, sunset, calm,
-sky and grape. The button under Stop/unlock walks to the next one, or pick one in
-Settings. Everything - buttons, ring, sky, checkboxes, text - is drawn from the
-scheme, and your choice is remembered.
+The header shows where you stand: a ring counting the break down or filling with
+tasks done, and a sky that follows the session. Starting one slides the sun down
+behind the hills while the moon climbs and the stars come out.
 
 ## Habits
 
-The **Habits** tab is for things you want to do every day, separate from the
-to-do list. Add a habit, then select it and press "Done today / undo" (or
-double-click it) to tick today off. Each row shows:
-
-- `[x]` if it's done today,
-- seven dots for the last 7 days, oldest first (filled = done),
-- your streak: days in a row. A streak doesn't count as broken until a whole day
-  is missed, so it still shows yesterday's number before you've ticked today.
-
-Habits don't lock or unlock anything; they're just tracked. They are saved in
-`data/config.json` with everything else.
+The **Habits** tab tracks things you want to do every day, separately from the
+to-do list. Each habit keeps a streak and its own colour. Habits never lock or
+unlock anything; they are just tracked.
 
 ## Settings
 
 | Setting | Meaning |
 | --- | --- |
-| Language | English, العربية (Arabic), Français, Español. Switches straight away; Arabic also flips the layout right to left. To add a language, see the top of `focus/i18n.py` |
+| Language | English, العربية, Français, Español. Arabic flips the layout right to left |
+| Colour scheme | Nine schemes, each with a light and a dark variant |
 | Break after each task | Off = only the end-of-list break |
-| Break after each task (minutes) | Default 5 |
-| Break after whole list (minutes) | Default 15 |
-| How blocked apps are handled | `suspend` freezes the app — nothing is lost, tabs survive. `close` terminates it, unsaved work can be lost |
-| Also block websites | Needs admin; edits the Windows hosts file |
-| Close browsers when locking | On by default — see the note below on why this is needed |
-| Check interval | How often the watchdog sweeps for blocked apps |
+| Break lengths | Default 5 minutes per task, 15 at the end of the list |
+| How blocked apps are handled | `suspend` freezes the app so nothing is lost; `close` terminates it |
+| Also block websites | Needs administrator; edits the Windows hosts file |
+| Close browsers when locking | On by default — see the note below |
+| Check interval | How often the watchdog looks for blocked apps |
 
-## Lists
-
-- **Blocked apps** — process names as Task Manager shows them (`chrome.exe`).
-  Windows' own critical processes are ignored even if you add them, so you can't
-  freeze your desktop by mistake.
-- **Blocked sites** — domains (`youtube.com`); `www.` is added for you.
-- **Always allowed sites** — your school portal etc. Never blocked, even if a
-  parent domain is on the blocked list. Domains only: `app.edu-nation.app` works,
-  `docs.google.com/slideshow` does not, because a hosts file has no idea about
-  paths. Use the bare domain.
+**Blocked apps** take process names as Task Manager shows them (`chrome.exe`).
+Windows' own critical processes are ignored even if you add them, so you cannot
+freeze your desktop by mistake. **Blocked sites** take domains (`youtube.com`).
+**Always allowed sites** is for your school portal and the like — domains only,
+since a hosts file knows nothing about paths.
 
 ## Things worth knowing
 
-- Website blocking works by pointing domains at `0.0.0.0` in
-  `C:\Windows\System32\drivers\etc\hosts`, inside a marked block the app owns.
-  It only rewrites its own block, and removes it on unlock or exit.
-  If the app is killed hard while locked, run it again and press
-  "Stop / unlock" to clean the entries up.
 - **Why browsers get closed when a lock starts.** The hosts file only affects new
-  DNS lookups. A tab that is already playing a blocked site has an open connection
-  and buffered data, and the browser keeps its own DNS cache, so it can carry on for
-  several minutes after the lock. Closing the browser is what makes the block bite
-  immediately — that is the "Close browsers when locking" setting. With it off, a
-  video that is already playing will keep playing for a while.
-- This is a focus aid, not parental-control software. It doesn't defend itself:
-  you can always close it or edit `data/config.json`. That's deliberate — the
-  point is to make the distraction take effort, not to be unbeatable.
-- All state lives in `data/config.json`. Settings from older versions are dropped
-  automatically the next time it saves.
+  DNS lookups. A tab already playing a blocked site has an open connection and
+  cached DNS, so it can carry on for several minutes after the lock. Closing the
+  browser is what makes the block bite immediately. Turn it off and expect that
+  lag back.
+- If the app is killed while locked, run it again and press **Stop / unlock** to
+  clear the leftover hosts entries.
+- This is a focus aid, not parental-control software. It does not defend itself:
+  it can be closed, and its settings file edited. The point is to make the
+  distraction cost effort, not to be unbeatable.
+- Your tasks, habits, blocklists and settings live in `data\config.json` beside
+  the app. Nothing leaves your computer.
 
-## Tests
+## Source code
+
+This page carries the app and this README only. The Python source it is built
+from is still in the repository's history — nothing was lost. To get it back:
 
 ```
-.venv\Scripts\python.exe tests\test_focus_flow.py
-.venv\Scripts\python.exe tests\test_task_links.py
-.venv\Scripts\python.exe tests\test_habits_and_language.py
-.venv\Scripts\python.exe tests\test_undo_ends_break.py
+git clone https://github.com/Anonymous15ui/focus-locker.git
+cd focus-locker
+git checkout e6db372
 ```
 
-Tests point `FOCUS_LOCKER_CONFIG` at a scratch file so they can never overwrite
-real settings, and use a fake hosts file.
+That commit has the full project: the `focus` package, the tests, and
+`build_exe.bat`, which rebuilds `FocusLocker.exe`.
+
+**The .exe does not update itself.** Changing the source means rebuilding it and
+uploading the new file.
