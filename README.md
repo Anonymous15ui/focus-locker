@@ -5,15 +5,24 @@ unlocks them for a break when you finish a task.
 
 ## Setup
 
-Needs Windows and Python 3.9+. From the project folder, once:
+Needs Windows and **Python 3.9+** — install it from
+[python.org](https://www.python.org/downloads/) and tick *"Add python.exe to
+PATH"* on the first screen of the installer.
+
+Then just run `run.bat`. The first time, it builds what it needs and then starts
+the app. You can also double-click **`setup.bat`** to do only that part.
+
+Doing it by hand, if you prefer:
 
 ```
 py -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-That creates the `.venv` folder the launchers expect. It isn't in the repo, so
-this step is required after cloning.
+`.venv` is deliberately **not** in the repo and must never be committed: it
+hardcodes absolute paths to the machine that created it and to one exact Python
+build, so a copied one is broken everywhere else. `requirements.txt` rebuilds it
+in seconds.
 
 ## Run it
 
