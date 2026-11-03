@@ -49,6 +49,7 @@ DEFAULTS = {
     "habits": [],
     # --- display ---
     "language": "en",                 # a code from focus.i18n.LANGUAGES
+    "theme": "dark",                  # "dark" or "light"
 }
 
 _lock = threading.Lock()

@@ -1,29 +1,62 @@
-"""Dark theme: palette, ttk styling, and the two custom widgets the UI leans on.
+"""Look and feel: two palettes, ttk styling, and the custom widgets.
 
 Tk gives you grey boxes and square corners. Everything here is about getting past
-that without pulling in a UI toolkit: ttk restyled for dark, plus a pill button and
-a progress ring drawn on canvases, because Tk cannot round a corner by itself.
+that without pulling in a UI toolkit: a dark and a light palette that can be
+swapped at runtime, a pill button and a progress ring drawn on canvases, and a
+small illustration that changes with what the app is doing.
+
+Colours are module-level names that `set_mode` rebinds, so the rest of the app can
+keep saying `theme.TEXT` and get whichever palette is current.
 """
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk
 
-# --- palette ---------------------------------------------------------------
-BG = "#0f1118"          # window
-SURFACE = "#171a24"     # panels
-SURFACE_2 = "#1f2330"   # inputs, list rows
-LINE = "#2a2f40"        # hairlines
-TEXT = "#e9ebf3"
-MUTED = "#878ea6"
-DIM = "#5d6479"
+PALETTES = {
+    "dark": {
+        "BG": "#0f1118", "SURFACE": "#171a24", "SURFACE_2": "#1f2330", "LINE": "#2a2f40",
+        "TEXT": "#e9ebf3", "MUTED": "#878ea6", "DIM": "#5d6479",
+        "FOCUS_C": "#8b7bff", "BREAK_C": "#3ddc97", "IDLE_C": "#5d6479",
+        "DANGER": "#ff6b6b", "DONE_C": "#3ddc97",
+        # the sky in the banner, top colour to bottom colour, per state
+        "SKY": {"idle": ("#1b2340", "#3b3160"), "focus": ("#0d1030", "#241c4a"),
+                "break": ("#17384f", "#2c6f7a")},
+        "HILLS": ("#232a44", "#1a2036"),
+        "STAR": "#f2f4ff",
+    },
+    "light": {
+        "BG": "#f3f5fb", "SURFACE": "#ffffff", "SURFACE_2": "#e9edf6", "LINE": "#d5dbe8",
+        "TEXT": "#1b1f2b", "MUTED": "#5b6376", "DIM": "#8c93a6",
+        "FOCUS_C": "#6c5ce7", "BREAK_C": "#0faf74", "IDLE_C": "#9aa1b4",
+        "DANGER": "#e03131", "DONE_C": "#0faf74",
+        "SKY": {"idle": ("#bcd8f7", "#f6d5b8"), "focus": ("#8fa8e8", "#c9b6f0"),
+                "break": ("#9fe0f5", "#d8f4e4")},
+        "HILLS": ("#8fa4c8", "#6d82a8"),
+        "STAR": "#fffdf2",
+    },
+}
 
-FOCUS_C = "#8b7bff"     # locked in
-BREAK_C = "#3ddc97"     # breathing
-IDLE_C = "#5d6479"      # nothing running
-DANGER = "#ff6b6b"
-DONE_C = "#3ddc97"
+# Accents for things that just want to be distinguishable and cheerful: habit
+# dots, list bullets. They read on either palette.
+ACCENTS = ["#8b7bff", "#22c3e6", "#f6a609", "#ff6b9a", "#3ddc97", "#ff9f5a", "#5bc0f8"]
 
 UI = "Segoe UI"
+MODE = "dark"
+
+
+def set_mode(name):
+    """Swap the palette. Rebinds the module-level colour names."""
+    global MODE
+    MODE = name if name in PALETTES else "dark"
+    globals().update(PALETTES[MODE])
+    return MODE
+
+
+set_mode("dark")                        # module import leaves a usable palette
+
+
+def other_mode():
+    return "light" if MODE == "dark" else "dark"
 
 
 def fonts():
@@ -37,8 +70,17 @@ def fonts():
     }
 
 
-def apply(root):
-    """Dark-mode every ttk widget class the app uses."""
+def mix(a, b, t):
+    """Blend two #rrggbb colours, t=0 gives a, t=1 gives b."""
+    pa = [int(a[i:i + 2], 16) for i in (1, 3, 5)]
+    pb = [int(b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#%02x%02x%02x" % tuple(int(x + (y - x) * t) for x, y in zip(pa, pb))
+
+
+def apply(root, mode=None):
+    """Dress every ttk widget class the app uses in the current palette."""
+    if mode:
+        set_mode(mode)
     root.configure(bg=BG)
     style = ttk.Style(root)
     style.theme_use("clam")
@@ -55,8 +97,7 @@ def apply(root):
 
     style.configure("TEntry", insertcolor=TEXT, padding=6,
                     fieldbackground=SURFACE_2, foreground=TEXT, borderwidth=0)
-    style.map("TEntry", fieldbackground=[("focus", SURFACE_2)],
-              bordercolor=[("focus", FOCUS_C)], lightcolor=[("focus", FOCUS_C)])
+    style.map("TEntry", bordercolor=[("focus", FOCUS_C)], lightcolor=[("focus", FOCUS_C)])
 
     style.configure("TButton", background=SURFACE_2, foreground=TEXT, borderwidth=0,
                     padding=(12, 7), font=f["body"])
@@ -77,7 +118,6 @@ def apply(root):
     root.option_add("*TCombobox*Listbox.selectBackground", FOCUS_C)
     root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
 
-    # Notebook: flat tabs, accent on the active one, no 3D anything
     style.configure("TNotebook", background=BG, borderwidth=0, tabmargins=(2, 6, 2, 0))
     style.configure("TNotebook.Tab", background=BG, foreground=MUTED, borderwidth=0,
                     padding=(14, 8), font=f["body"])
@@ -92,9 +132,8 @@ def apply(root):
 
 def listbox(parent, **kw):
     """A tk.Listbox that does not look like 1996."""
-    f = fonts()
     options = dict(
-        bg=SURFACE, fg=TEXT, font=f["list"], activestyle="none",
+        bg=SURFACE, fg=TEXT, font=fonts()["list"], activestyle="none",
         selectbackground=SURFACE_2, selectforeground=TEXT,
         highlightthickness=0, borderwidth=0, relief="flat", takefocus=True,
     )
@@ -103,31 +142,26 @@ def listbox(parent, **kw):
 
 
 def text(parent, **kw):
-    f = fonts()
-    options = dict(bg=SURFACE, fg=MUTED, font=f["mono"], highlightthickness=0,
+    options = dict(bg=SURFACE, fg=MUTED, font=fonts()["mono"], highlightthickness=0,
                    borderwidth=0, relief="flat", insertbackground=TEXT, padx=10, pady=8)
     options.update(kw)
     return tk.Text(parent, **options)
 
 
 class PillButton(tk.Canvas):
-    """A rounded button, because ttk cannot round a corner.
+    """A rounded button, because ttk cannot round a corner."""
 
-    Drawn as a rounded rectangle plus a label, with its own hover and press
-    colours so it feels alive under the cursor.
-    """
-
-    def __init__(self, parent, text, command, kind="ghost", width=None, bg=BG):
+    def __init__(self, parent, text, command, kind="ghost", width=None, bg=None):
         self.palette = {
-            "primary": (FOCUS_C, "#9d90ff", "#ffffff"),
-            "break": (BREAK_C, "#5ae7ab", "#06281b"),
+            "primary": (FOCUS_C, mix(FOCUS_C, "#ffffff", 0.2), "#ffffff"),
+            "break": (BREAK_C, mix(BREAK_C, "#ffffff", 0.2), "#06281b"),
             "danger": (SURFACE_2, LINE, DANGER),
             "ghost": (SURFACE_2, LINE, TEXT),
         }[kind]
         f = tkfont.Font(font=fonts()["body"])
         # NOT self._w: Tkinter keeps the widget path name there
         self._px = width or f.measure(text) + 34
-        super().__init__(parent, width=self._px, height=34, bg=bg,
+        super().__init__(parent, width=self._px, height=34, bg=bg or BG,
                          highlightthickness=0, borderwidth=0)
         self.command = command
         self._enabled = True
@@ -146,9 +180,8 @@ class PillButton(tk.Canvas):
         return self.create_polygon(points, smooth=True, **kw)
 
     def _paint(self, hover):
-        if not self._enabled:
-            return
-        self.itemconfig(self._shape, fill=self.palette[1 if hover else 0])
+        if self._enabled:
+            self.itemconfig(self._shape, fill=self.palette[1 if hover else 0])
 
     def _press(self, _e):
         if self._enabled:
@@ -182,8 +215,8 @@ class Ring(tk.Canvas):
     SIZE = 132
     WIDTH = 11
 
-    def __init__(self, parent, bg=SURFACE):
-        super().__init__(parent, width=self.SIZE, height=self.SIZE, bg=bg,
+    def __init__(self, parent, bg=None):
+        super().__init__(parent, width=self.SIZE, height=self.SIZE, bg=bg or SURFACE,
                          highlightthickness=0, borderwidth=0)
         pad = self.WIDTH / 2 + 2
         box = (pad, pad, self.SIZE - pad, self.SIZE - pad)
@@ -210,8 +243,8 @@ class Ring(tk.Canvas):
         self._pulse = 10
 
     def _animate(self):
-        # a language switch tears every widget down and rebuilds it, so the loop
-        # has to notice when its own canvas has gone
+        # a theme or language switch tears every widget down and rebuilds it, so the
+        # loop has to notice when its own canvas has gone
         if not self.winfo_exists():
             return
         self._shown += (self._target - self._shown) * 0.25
@@ -223,6 +256,74 @@ class Ring(tk.Canvas):
             self._pulse -= 1
             grow = self._pulse if self._pulse < 6 else 10 - self._pulse
             self.itemconfig(self._arc, width=self.WIDTH + grow)
-        elif float(self.itemcget(self._arc, "width") or 0) != self.WIDTH:   # Tk returns "11.0"
+        elif float(self.itemcget(self._arc, "width") or 0) != self.WIDTH:
             self.itemconfig(self._arc, width=self.WIDTH)
         self.after(40, self._animate)
+
+
+class Scene(tk.Canvas):
+    """A small landscape across the top that changes with the session.
+
+    Drawn rather than bundled as images: a drawing recolours itself for the light
+    and dark palettes and for each state, weighs nothing in the .exe, and comes
+    with no licence attached. Night and stars while you are locked in, daylight
+    on a break, sunrise when nothing is running.
+    """
+
+    HEIGHT = 104
+
+    def __init__(self, parent, width=900):
+        super().__init__(parent, height=self.HEIGHT, bg=BG,
+                         highlightthickness=0, borderwidth=0)
+        self._state = None
+        self.bind("<Configure>", lambda _e: self.render(self._state, force=True))
+
+    def render(self, state, force=False):
+        if state == self._state and not force:
+            return
+        self._state = state or "idle"
+        self.delete("all")
+        w = max(self.winfo_width(), 10)
+        h = self.HEIGHT
+        top, bottom = SKY.get(self._state, SKY["idle"])
+
+        # sky: a stack of thin bands, which is as close to a gradient as a canvas gets
+        bands = 26
+        for i in range(bands):
+            self.create_rectangle(0, h * i / bands, w, h * (i + 1) / bands + 1,
+                                  fill=mix(top, bottom, i / (bands - 1)), outline="")
+
+        if self._state == "focus":
+            for x, y, r in ((0.08, 0.3, 1.6), (0.17, 0.55, 1.1), (0.3, 0.22, 1.4),
+                            (0.44, 0.45, 1.0), (0.57, 0.26, 1.5), (0.68, 0.6, 1.1),
+                            (0.79, 0.33, 1.3), (0.9, 0.5, 1.0), (0.96, 0.2, 1.4)):
+                cx, cy = w * x, h * y
+                self.create_oval(cx - r, cy - r, cx + r, cy + r, fill=STAR, outline="")
+            # crescent: a bright disc with a sky-coloured disc bitten out of it
+            mx, my, mr = w * 0.86, h * 0.34, 15
+            self.create_oval(mx - mr, my - mr, mx + mr, my + mr, fill=STAR, outline="")
+            self.create_oval(mx - mr + 7, my - mr - 3, mx + mr + 7, my + mr - 3,
+                             fill=mix(top, bottom, 0.3), outline="")
+        else:
+            # sun, low and warm for idle, high and bright on a break
+            sx, sy = (w * 0.86, h * 0.62) if self._state == "idle" else (w * 0.84, h * 0.3)
+            glow = "#ffd27a" if self._state == "idle" else "#fff1b8"
+            for rr, tint in ((30, 0.18), (22, 0.4), (15, 1.0)):
+                self.create_oval(sx - rr, sy - rr, sx + rr, sy + rr,
+                                 fill=mix(mix(top, bottom, 0.4), glow, tint), outline="")
+            if self._state == "break":
+                for cx, cy, s in ((w * 0.2, h * 0.34, 1.0), (w * 0.52, h * 0.24, 0.7)):
+                    cloud = mix(STAR, "#ffffff", 0.5)
+                    for dx, dy, r in ((0, 0, 13), (14, 3, 10), (-14, 3, 9), (5, -7, 9)):
+                        self.create_oval(cx + dx * s - r * s, cy + dy * s - r * s,
+                                         cx + dx * s + r * s, cy + dy * s + r * s,
+                                         fill=cloud, outline="")
+
+        # two ridges of hills, far one paler, so the band has some depth
+        far, near = HILLS
+        self.create_polygon(0, h, 0, h * 0.72, w * 0.18, h * 0.46, w * 0.37, h * 0.7,
+                            w * 0.55, h * 0.4, w * 0.75, h * 0.66, w, h * 0.5, w, h,
+                            fill=far, outline="", smooth=True)
+        self.create_polygon(0, h, 0, h * 0.86, w * 0.22, h * 0.66, w * 0.45, h * 0.88,
+                            w * 0.68, h * 0.62, w * 0.88, h * 0.82, w, h * 0.74, w, h,
+                            fill=near, outline="", smooth=True)

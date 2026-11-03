@@ -19,11 +19,12 @@ class App(tk.Tk):
         self.geometry("860x620")
         self.minsize(720, 560)
         self._log_lines = []                  # kept so a language switch doesn't wipe the log
+        self._pending_log = []                # filled from any thread, drained on the main one
         self._break_total = None              # full length of the running break, for the ring
         self.ctl = Controller(log=self.log)
         i18n.set_language(self.ctl.cfg["language"])
         self._habit_day = habits.today()
-        theme.apply(self)
+        theme.apply(self, self.ctl.cfg["theme"])
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -41,6 +42,8 @@ class App(tk.Tk):
         self.justify = "right" if rtl else "left"
         self.title(t("title"))
 
+        self.scene = theme.Scene(self)
+        self.scene.pack(fill="x", side="top")
         self._build_hero()
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=14, pady=(4, 12))
@@ -76,6 +79,8 @@ class App(tk.Tk):
                          kind="break", bg=theme.SURFACE).pack(pady=3)
         theme.PillButton(buttons, t("stop"), self.on_stop,
                          kind="danger", bg=theme.SURFACE).pack(pady=3)
+        theme.PillButton(buttons, t("theme_light" if theme.MODE == "dark" else "theme_dark"),
+                         self.on_toggle_theme, kind="ghost", bg=theme.SURFACE).pack(pady=3)
 
         middle = ttk.Frame(card, style="Card.TFrame")
         middle.pack(side=self.near, fill="both", expand=True, pady=16)
@@ -260,6 +265,23 @@ class App(tk.Tk):
         self.log_box.config(state="disabled")
 
     # -- actions ------------------------------------------------------------
+    def _rebuild(self):
+        """Tear the window down and build it again - for a language or theme switch."""
+        tab = self.nb.index("current")
+        self.log_box = None                   # log() skips the box until it's rebuilt
+        for child in self.winfo_children():
+            child.destroy()
+        self._build_ui(tab)
+        # _build_ui fills the lists while the new widgets are built but not yet on
+        # screen, and a Listbox filled before it is realised paints nothing - the
+        # rows are there, just invisible until something forces a repaint. Fill
+        # them again once Tk has laid the window out.
+        self.after_idle(self._refill_lists)
+
+    def _refill_lists(self):
+        self.refresh_tasks()
+        self.refresh_habits()
+
     def on_language(self, _e=None):
         names = list(i18n.LANGUAGES.values())
         code = list(i18n.LANGUAGES)[names.index(self.v_lang.get())]
@@ -268,11 +290,14 @@ class App(tk.Tk):
         self.ctl.cfg["language"] = code
         self.ctl.save()
         i18n.set_language(code)
-        tab = self.nb.index("current")
-        self.log_box = None                   # log() skips the box until it's rebuilt
-        for child in self.winfo_children():
-            child.destroy()
-        self._build_ui(tab)
+        self._rebuild()
+
+    def on_toggle_theme(self):
+        mode = theme.other_mode()
+        self.ctl.cfg["theme"] = mode
+        self.ctl.save()
+        theme.apply(self, mode)
+        self._rebuild()
 
     def on_add_task(self):
         self.ctl.add_task(self.task_entry.get(), self.link_entry.get())
@@ -412,7 +437,7 @@ class App(tk.Tk):
     def refresh_habits(self):
         sel = self._selected_habit()
         self.habit_list.delete(0, "end")
-        for habit in self.ctl.habits:
+        for position, habit in enumerate(self.ctl.habits):
             mark = "✓" if habits.is_done(habit) else "○"
             days = habits.last_days(habit)
             if i18n.is_rtl():
@@ -421,8 +446,10 @@ class App(tk.Tk):
             line = self._line(mark, habit["name"], dots,
                               t("habit_streak", n=habits.streak(habit)))
             self.habit_list.insert("end", "  " + line)
+            # each habit keeps its own colour, so a long list stays easy to scan
+            accent = theme.ACCENTS[position % len(theme.ACCENTS)]
             self.habit_list.itemconfig(
-                "end", foreground=theme.DONE_C if habits.is_done(habit) else theme.TEXT)
+                "end", foreground=accent if habits.is_done(habit) else theme.MUTED)
         if sel is not None and sel < self.habit_list.size():
             self.habit_list.selection_set(sel)
 
@@ -472,6 +499,7 @@ class App(tk.Tk):
             self.ring.set(done / total if total else 0, f"{done}/{total}" if total else "0",
                           t("ring_idle_sub"), theme.IDLE_C)
 
+        self.scene.render(state)              # night while locked, daylight on a break
         self.headline.config(text=headline, foreground=colour)
         self.status.config(text=text)
         self.progress.config(value=(done / total * 100) if total else 0)
@@ -479,17 +507,30 @@ class App(tk.Tk):
         self.start_btn.set_enabled(state != FOCUS)
 
     def log(self, message):
-        line = str(message).rstrip()
-        self._log_lines.append(line)
+        """Queue a line for the Activity tab.
+
+        The app blocker calls this from its watchdog thread, and Tk is not
+        thread-safe, so nothing here touches a widget. `_drain_log` empties the
+        queue on the main thread a second later.
+        """
+        self._pending_log.append(str(message).rstrip())
+
+    def _drain_log(self):
+        if not self._pending_log:
+            return
+        lines, self._pending_log = self._pending_log, []
+        self._log_lines.extend(lines)
         box = getattr(self, "log_box", None)
         if box is None:
-            return
+            return                            # mid-rebuild; the text is kept above
         box.config(state="normal")
-        box.insert("end", line + "\n")
+        for line in lines:
+            box.insert("end", line + "\n")
         box.see("end")
         box.config(state="disabled")
 
     def _tick(self):
+        self._drain_log()
         changed = self.ctl.tick()
         if changed:
             self.log(changed)

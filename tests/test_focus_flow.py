@@ -41,9 +41,19 @@ print("hosts file: blocked, allowed-list respected, replaced not stacked, restor
 for p in notepads():                                   # clean slate
     p.terminate()
 time.sleep(1)
-subprocess.Popen(["notepad.exe"])
-time.sleep(4)
-assert notepads(), "stand-in app did not start"
+
+# Windows 11 Notepad hands off to an existing instance and the process we spawned
+# can exit on its own, so wait for one that is still there a moment later rather
+# than trusting the first sighting.
+for attempt in range(3):
+    subprocess.Popen(["notepad.exe"])
+    time.sleep(4)
+    first = {p.pid for p in notepads()}
+    time.sleep(2)
+    if first and first & {p.pid for p in notepads()}:
+        break
+else:
+    raise AssertionError("stand-in app would not stay running")
 
 c = Controller(log=log)
 c.cfg.update(block_websites=True, close_browsers_on_lock=True,
