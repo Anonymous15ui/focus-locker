@@ -8,6 +8,11 @@ __pycache__/
 # your own tasks, blocklists and settings - personal, not part of the app
 data/
 
+# PyInstaller output - the built .exe belongs in a GitHub Release, not the repo
+build/
+dist/
+*.spec
+
 # windows / editors
 Thumbs.db
 desktop.ini

@@ -3,6 +3,23 @@
 A Windows to-do app that locks the apps and websites you pick while you work, and
 unlocks them for a break when you finish a task.
 
+## Just want to use it?
+
+Download **FocusLocker.exe** from the
+[Releases page](https://github.com/Anonymous15ui/focus-locker/releases) and
+double-click it. One file, no Python, no setup. Windows will ask for
+administrator — that is how it edits the hosts file to block websites, and the
+app can only block apps without it.
+
+Two things to expect the first time:
+
+- **"Windows protected your PC"** — click *More info* → *Run anyway*. That is
+  SmartScreen flagging an unsigned program, not a virus. Signing it costs money.
+- Some antivirus tools are suspicious of any PyInstaller build. If yours quarantines
+  it, the source is right here and `build_exe.bat` rebuilds it yourself.
+
+The rest of this file is for running or changing the source.
+
 ## Setup
 
 Needs Windows and **Python 3.9+** — install it from
